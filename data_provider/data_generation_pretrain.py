@@ -1,5 +1,5 @@
 # -- coding: utf-8 --
-# Lasted update : 2023-10-26
+
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
