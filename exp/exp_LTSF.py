@@ -31,21 +31,21 @@ class Exp_Main(Exp_Basic):
         ## ==== Initialization of Pretrain Model ====
         model_pre = Pretrain_Model(configs=self.configs, attn_direction="uni", 
                                clamp_len=-1, same_length=False, 
-                               reuse_len=self.args.reuse_len, reuse_len_uni=self.args.reuse_len_uni,
-                               mem_len=self.args.mem_len, mem_len_uni=self.args.mem_len_uni,
-                               mul_uni_ratio=self.args.mul_uni_ratio, kernel_size=self.args.kernel_size,
-                               group_token_num=self.args.group_token_num,
-                               sparse_attn=self.sparse_attn_mask, sparse_attn_mem=self.sparse_attn_mask_mem,
-                               efficient=self.args.efficient, strategy=self.args.strategy)
+                               reuse_len_mul=self.args.reuse_len, reuse_len_uni=self.args.reuse_len_uni,
+                               mem_len_mul=self.args.mem_len, mem_len_uni=self.args.mem_len_uni,
+                               mul_uni_ratio=self.args.mul_uni_ratio, group_token_num=self.args.group_token_num,
+                            #    sparse_attn=self.sparse_attn_mask, sparse_attn_mem=self.sparse_attn_mask_mem,
+                               efficient=self.args.efficient)
         if self.args.No_Pre:
             print('No prerained model used.')
         else:
             print('Loading model state dict...')
             pre_state_dict = torch.load(
-                os.path.join(self.args.root_path, self.args.model_save_path, 
+                os.path.join(self.args.root_path, self.args.checkpoints, 
                              'pretrain/bestloss/', self.setting, 
                              'state_dict-bestloss-' + self.args.pretrain_model_id + '.pkl'))
-            model_pre.load_state_dict(pre_state_dict['model_state_dict'])
+            # model_pre.load_state_dict(pre_state_dict['model_state_dict'])
+            model_pre.load_state_dict(pre_state_dict)
             print('Finish.')
 
         model = Prediction_Model(pred_len=self.configs.data.target_points, 
@@ -128,7 +128,7 @@ class Exp_Main(Exp_Basic):
         total_loss = []
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark, batch_x_decomp) in enumerate(vali_loader):
+            for _, (batch_x, batch_y, batch_x_mark, batch_y_mark, batch_x_decomp) in enumerate(vali_loader):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float()
                 batch_x_decomp = batch_x_decomp.float().to(self.device)
@@ -166,7 +166,7 @@ class Exp_Main(Exp_Basic):
         
         ## ==== Training ====
         print('End-to-end fine-tuning......')
-        best_model_path = os.path.join(self.args.root_path, self.args.model_save_path, self.args.task, 'bestloss/', self.setting,
+        best_model_path = os.path.join(self.args.root_path, self.args.checkpoints, self.args.task, 'bestloss/', self.setting,
                                    str(self.configs.data.context_points)+'-'+str(self.configs.data.target_points))
         if not os.path.exists(best_model_path):
             print('Model save path does not exist, creating folder : ' + best_model_path)
@@ -194,7 +194,6 @@ class Exp_Main(Exp_Basic):
                 num_samples += batch_x.shape[0]
                 iter_count += 1
                 model_optim.zero_grad()
-                # print(batch_x.shape)
                 batch_x = batch_x.float().to(self.device)
 
                 batch_y = batch_y.float().to(self.device)
@@ -236,7 +235,7 @@ class Exp_Main(Exp_Basic):
             print("Epoch: {} cost time: {} lr: {}".format(epoch + 1, time.time() - epoch_time, 
                                                       model_optim.state_dict()['param_groups'][0]['lr']))
             '''scheduler.step()'''
-            train_loss = train_loss/num_samples
+            train_loss = train_loss/num_samples*self.args.batch_size
             vali_loss = self.vali(vali_loader, criterion)
             test_loss = self.vali(test_loader, criterion)
 
@@ -268,7 +267,7 @@ class Exp_Main(Exp_Basic):
         if test:
             print('loading model')
             pred_state_dict = torch.load(
-                os.path.join(self.args.root_path, self.args.model_save_path, 
+                os.path.join(self.args.root_path, self.args.checkpoints, 
                              self.args.task, 'bestloss/', self.setting, 
                              str(self.configs.data.context_points)+'-'+str(self.configs.data.target_points),
                              'checkpoint.pkl'))
@@ -314,8 +313,7 @@ class Exp_Main(Exp_Basic):
                 else:
                     if return_attn:
                         outputs, attn_prob_lst, attn_score_lst = self.model(
-                            x=batch_x, x_decomp=batch_x_decomp, 
-                            return_att=return_attn)
+                            x=batch_x, x_decomp=batch_x_decomp, return_att=return_attn)
                     else:
                         outputs = self.model(x=batch_x, x_decomp=batch_x_decomp)
 
