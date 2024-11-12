@@ -1,4 +1,4 @@
-from data_provider.data_loader_pred import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Solar
+from data_provider.data_loader_LTSF import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Solar
 from data_provider.data_loader_AD import PSMSegLoader, MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader
 from torch.utils.data import DataLoader
 
@@ -18,7 +18,7 @@ data_dict = {
 
 
 def data_provider(args, flag):
-    Data = data_dict[args.data]
+    Data = data_dict[args.dset]
     timeenc = 0 if args.embed != 'timeF' else 1
 
     if flag == 'test':
@@ -51,7 +51,7 @@ def data_provider(args, flag):
         data_set =  Data(
             root_path=args.root_path,
             data_path=args.data_path,
-            win_size=args.input_len,
+            win_size=args.seq_len,
             flag=flag,
             decomposition=args.decomposition,
             composition=args.component, kernel_size=args.kernel_size
@@ -68,7 +68,7 @@ def data_provider(args, flag):
             root_path=args.root_path,
             data_path=args.data_path,
             flag=flag,
-            size=[args.input_len, args.label_len, args.pred_len],
+            size=[args.seq_len, args.label_len, args.pred_len],
             features=args.features,
             target=args.target,
             timeenc=timeenc,
