@@ -1,0 +1,24 @@
+data:
+  batch_size: 20
+  batch_stride: null
+  context_points: 96
+  mask_ratio: 0.3
+  num_predict: 16
+  patch_len: 12
+  patch_num: 8
+  stride: 12
+  stride_subseq: 96
+  test_ratio: null
+  train_ratio: null
+model:
+  d_ff: 512
+  d_head: 32
+  d_layers: 0
+  d_model: 256
+  dropout: 0.2
+  dropout_att: 0.1
+  e_layers: 2
+  head_dropout: 0.1
+  kernel_size: 15
+  mul_uni_ratio: 1
+  n_heads: 8
