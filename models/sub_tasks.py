@@ -1,10 +1,12 @@
 import einops
 import torch.nn as nn
 from torch import Tensor
+import argparse
 
 from layers.basics import series_decomp
 from data_provider.data_utils import creat_patch
-from models.JCCMTM import data_revin, JCC_backbone, JCCEncoder
+from models.JCCMTM import data_revin, Model
+from models.JCC_backbone import JCC_backbone
 
 
 class Pretrain_Head(nn.Module):
@@ -36,37 +38,33 @@ class Pretrain_Head(nn.Module):
         return output_g, output_h
     
 class Pretrain_Model(nn.Module):
-    def __init__(self, attn_direction, clamp_len, same_length, 
-                 reuse_len:int=0, reuse_len_uni:int=0, mem_len:int=0, mem_len_uni:int=0, 
-                 mul_uni_ratio:int=1, kernel_size:int=7, group_token_num:int=5,
-                 sparse_attn:Tensor=None, sparse_attn_mem:Tensor=None, configs=None, 
-                 efficient=False, details=False, strategy='CICD'):
+    def __init__(self, configs:argparse.Namespace=None, attn_direction='uni', clamp_len=-1, 
+                 same_length:bool=False, use_seg_emb:bool=False, learn_pe:bool=True, 
+                 reuse_len_mul:int=0, reuse_len_uni:int=0, mem_len_mul:int=0, mem_len_uni:int=0, 
+                 mul_uni_ratio:int=1, group_token_num:int=5,
+                 efficient=False, res_attention:bool=True, verbose:bool=False,
+                 details=False,):
         super(Pretrain_Model, self).__init__()
         self.configs = configs
-        self.strategy = strategy
-        seq_len = configs.data.patch_num*configs.data.patch_len
-        self.transformer = JCC_backbone(configs=configs,
-                                              attn_direction=attn_direction, 
-                                              clamp_len=clamp_len, same_length=same_length, 
-                                              reuse_len=reuse_len, reuse_len_uni=reuse_len_uni,
-                                              mem_len=mem_len, mem_len_uni=mem_len_uni,
-                                              sparse_attn_=sparse_attn, sparse_attn_mem_=sparse_attn_mem, 
-                                              mul_uni_ratio=mul_uni_ratio, group_token_num=group_token_num,
-                                              efficient=efficient)
+        self.JCC = JCC_backbone(configs, attn_direction, clamp_len, 
+                                same_length, use_seg_emb, learn_pe,
+                                reuse_len_mul, reuse_len_uni,
+                                mem_len_mul, mem_len_uni, 
+                                mul_uni_ratio, group_token_num,
+                                efficient=efficient, res_attention=res_attention, verbose=verbose)
         self.linear_model_uni = None
-        self.encoder = JCCEncoder(transformer=self.transformer, 
-                                   linear=self.linear_model_uni, 
-                                   configs=configs, kernel_size=kernel_size)
+        self.encoder = Model(configs=configs, encoder=self.JCC)
         self.decoder = Pretrain_Head(d_model=configs.model.d_model, d_out=configs.data.patch_len, 
                                      head_dropout=configs.model.head_dropout, details=details)
         
     def forward(self, inp_k:Tensor, inp_decomp:Tensor, seg_id:Tensor=None, 
-                input_mask:Tensor=None, input_mask_uni:Tensor=None, 
-                mems:list=None, mems_uni:list=None,
-                perm_mask:Tensor=None, perm_mask_uni:Tensor=None,
-                target_mapping:Tensor=None, target_mapping_uni:Tensor=None, 
+                sparse_attn_mask:Tensor=None, sparse_attn_mem_mask:Tensor=None,
+                input_mask_mul:Tensor=None, input_mask_uni:Tensor=None, 
+                mems_mul:list=None, mems_uni:list=None,
+                perm_mask_mul:Tensor=None, perm_mask_uni:Tensor=None,
+                target_mapping_mul:Tensor=None, target_mapping_uni:Tensor=None, 
                 target_masked_idx:Tensor=None, 
-                pretrain:bool=False):
+                pretrain:bool=False, strategy='CICD'):
         B, plen, patch_len = inp_k.shape
         self.configs.data.bsz_efficient = inp_k.shape[0]
         P, N = self.configs.data.patch_num, self.configs.data.n_vars
@@ -75,10 +73,11 @@ class Pretrain_Model(nn.Module):
             inp_decomp = inp_decomp.view(B, P, N, patch_len)
         # Encoder
         output_g, output_h, output_g_uni, output_h_uni, mem_lst, attn_prob_lst, attn_score_lst = \
-            self.encoder(inp_k, inp_decomp, seg_id, input_mask, input_mask_uni, 
-                         mems, mems_uni, perm_mask, perm_mask_uni,
-                         target_mapping, target_mapping_uni, 
-                         target_masked_idx, pretrain, strategy=self.strategy)
+            self.encoder(inp_k, inp_decomp, seg_id, 
+                         sparse_attn_mask, sparse_attn_mem_mask, mems_mul, mems_uni, 
+                         input_mask_mul, input_mask_uni, perm_mask_mul, perm_mask_uni,
+                         target_mapping_mul, target_mapping_uni, 
+                         target_masked_idx, pretrain, strategy=strategy)
         # Decoder
         output_g, output_h = self.decoder(output_g, output_h)
         # De-Normalization
@@ -96,7 +95,6 @@ class Prediction_Head(nn.Module):
     def __init__(self, configs, pred_len, head_dropout=0.1):
         super(Prediction_Head, self).__init__()
         self.num_patch = configs.data.patch_num
-        # self.n_vars = configs.data.n_vars
         self.d_model = configs.model.d_model
 
         self.flatten = nn.Flatten(start_dim=-2)
@@ -116,15 +114,13 @@ class Prediction_Head(nn.Module):
         return x
     
 class Prediction_Model(nn.Module):
-    def __init__(self, pred_len:int, dropout:float, encoder:nn.Module, decomposition=True, strategy='CICD'):
+    def __init__(self, pred_len:int, dropout:float, encoder:nn.Module, decomposition=True, component='trend', strategy='CICD'):
         super(Prediction_Model, self).__init__()
-        # encoder.efficient = efficient
         self.configs = encoder.configs
         self.decomposition = decomposition
+        self.component = component
         self.strategy = strategy
 
-        if self.decomposition:
-            self.decomp_module = series_decomp(self.configs.model.kernel_size)
         self.encoder = encoder
         self.encoder.pos_emb_mul = None
         self.encoder.pos_emb_uni = None
@@ -145,15 +141,11 @@ class Prediction_Model(nn.Module):
         """
         N = x.shape[-1]
         self.configs.data.bsz_efficient = x.shape[0]
-        '''if self.decomposition:
-            res_init, trend_init = self.decomp_module(x)
-            res_init, trend_init = res_init.permute(0, 2, 1), trend_init.permute(0, 2, 1)'''
         # Patching
         """
         inp_k :         [Batch, Channel, patch_num, patch_len]
         inp_decomp :    [Batch, Channel, patch_num, patch_len] if not None
         """
-        
         patch_len = self.configs.data.patch_len
         stride = self.configs.data.stride
         
@@ -183,7 +175,6 @@ class Prediction_Model(nn.Module):
         # De-Normalization
         dec_out = dec_out.permute(0, 2, 1)
         dec_out = self.encoder.revin(dec_out, 'denorm')
-        # dec_out = dec_out.permute(0, 2, 1)
 
         if return_att:
             return dec_out, attn_prob_lst, attn_score_lst
@@ -195,7 +186,6 @@ class Anomaly_Detection_Head(nn.Module):
     def __init__(self, configs, head_dropout=0.1):
         super(Anomaly_Detection_Head, self).__init__()
         self.num_patch = configs.data.patch_num
-        # self.n_vars = configs.data.n_vars
         self.d_model = configs.model.d_model
 
         self.flatten = nn.Flatten(start_dim=-2)
@@ -215,14 +205,13 @@ class Anomaly_Detection_Head(nn.Module):
         return x
 
 class Anomaly_Detection_Model(nn.Module):
-    def __init__(self, dropout:float, encoder:nn.Module, decomposition=True, strategy='CICD'):
+    def __init__(self, dropout:float, encoder:nn.Module, decomposition=True, component='trend',strategy='CICD'):
         super(Anomaly_Detection_Model, self).__init__()
         self.configs = encoder.configs
         self.decomposition = decomposition
+        self.component = component
         self.strategy = strategy
-
-        if self.decomposition:
-            self.decomp_module = series_decomp(self.configs.model.kernel_size)
+        
         self.encoder = encoder
         self.encoder.pos_emb_mul = None
         self.encoder.pos_emb_uni = None
@@ -234,7 +223,7 @@ class Anomaly_Detection_Model(nn.Module):
 
         self.recons_head = Anomaly_Detection_Head(self.configs, dropout)
 
-    def forward(self, x:Tensor, x_decomp:Tensor):
+    def forward(self, x:Tensor, x_decomp:Tensor, return_att=False):
         # Decomposition
         """
         x :             [Batch, Input length, Channel]
@@ -281,3 +270,5 @@ class Anomaly_Detection_Model(nn.Module):
         # dec_out = dec_out.permute(0, 2, 1)
 
         return dec_out
+
+
