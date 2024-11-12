@@ -1,12 +1,13 @@
 import os
 import warnings
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import torch
-from layers.basics import raw_series_decomp
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from torch.utils.data import Dataset
+
+from layers.basics import raw_series_decomp
 from utils.timefeatures import time_features
 
 warnings.filterwarnings('ignore')
@@ -14,7 +15,7 @@ warnings.filterwarnings('ignore')
 class Dataset_ETT_hour(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h', 
+                 target='OT', scale=True, timeenc=0, freq='h',
                  decomposition=True, composition='trend', kernel_size=7, stride=1):
         # size [seq_len, label_len, pred_len]
         # info
@@ -144,10 +145,13 @@ class Dataset_ETT_minute(Dataset):
 
         self.root_path = root_path
         self.data_path = data_path
+
         self.decomposition = decomposition
         self.composition = composition
         if decomposition:
+            print('kernel_size :', kernel_size)
             self.decomp = raw_series_decomp(kernel_size=kernel_size, stride=stride)
+        
         self.__read_data__()
 
     def __read_data__(self):
@@ -192,11 +196,13 @@ class Dataset_ETT_minute(Dataset):
 
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
+
         if self.decomposition:
             if self.composition=='trend':
                 self.data_decomp = data_trend[border1:border2]
             else:
                 self.data_decomp = data_res[border1:border2]
+
         self.data_stamp = data_stamp
 
     def __getitem__(self, index):
@@ -207,10 +213,12 @@ class Dataset_ETT_minute(Dataset):
 
         seq_x = self.data_x[s_begin:s_end]
         seq_y = self.data_y[r_begin:r_end]
+
         if self.decomposition:
             seq_x_decomp = self.data_decomp[s_begin:s_end]
         else:
             seq_x_decomp = seq_x
+
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
 
