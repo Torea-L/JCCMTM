@@ -118,6 +118,7 @@ def bigbird_block_rand_mask_with_head(from_seq_length,
         "Error from sequence length not in plan!"
     # Total number of blocks in the mmask
     num_blocks = from_seq_length // from_block_size
+    # print(f'from_seq_length = {from_seq_length}, from_block_size = {from_block_size}, num_blocks = {num_blocks}')
     # Number of blocks per plan
     plan_block_length = np.array(plan_from_length) // from_block_size
     # till when to follow plan
@@ -254,6 +255,7 @@ def bigbird_block_rand_mask(from_seq_length,
   Returns:
     adjacency list of size from_seq_length//from_block_size-2 by num_rand_blocks
   """
+    # print(f'from_seq_length = {from_seq_length}, to_seq_length = {to_seq_length}, from_block_size = {from_block_size}, to_block_size = {to_block_size}, num_rand_blocks = {num_rand_blocks}')
     assert from_seq_length // from_block_size == to_seq_length // to_block_size, \
         "Error the number of blocks needs to be same!"
 
@@ -316,6 +318,7 @@ def full_bigbird_mask(from_seq_length,
         rand_attn = bigbird_block_rand_mask(MAX_SEQ_LEN, MAX_SEQ_LEN,
                                             from_block_size, to_block_size,
                                             num_rand_blocks, focus)
+        print('rand_attn.shape = ', rand_attn.shape)
 
     attn_mask = np.zeros((MAX_SEQ_LEN, MAX_SEQ_LEN), dtype=np.int32)
     k = 0
@@ -340,15 +343,17 @@ def generate_sparse_att(seq_len, n_vars, params, conj, time_start, pre_group_num
     global MAX_SEQ_LEN
     MAX_SEQ_LEN = seq_len
     if num_rand_blocks is not None:
+        print(f'num_rand_blocks = {num_rand_blocks}')
         plan_num_rand_blocks_ = num_rand_blocks
     else:
-        plan_num_rand_blocks_ = int(num_rand_blocks_ratio*params.seq_len)
+        print(f'num_rand_blocks is None, num_rand_blocks_ratio = {num_rand_blocks_ratio}')
+        plan_num_rand_blocks_ = int(num_rand_blocks_ratio*params.TSaS_len)
         print('plan_num_rand_blocks_ = ', plan_num_rand_blocks_)
-    rand_attn_ = bigbird_block_rand_mask_with_head(from_seq_length=params.seq_len, 
-                                                   to_seq_length=params.seq_len, 
+    rand_attn_ = bigbird_block_rand_mask_with_head(from_seq_length=params.TSaS_len, 
+                                                   to_seq_length=params.TSaS_len, 
                                                    from_block_size=1, to_block_size=1, 
                                                    num_heads=conj.model.n_heads, 
-                                                   plan_from_length=[params.seq_len], 
+                                                   plan_from_length=[params.TSaS_len], 
                                                    plan_num_rand_blocks=[plan_num_rand_blocks_],
                                                    pre_group_num=pre_group_num,
                                                    window_block_left=n_vars, 
@@ -357,8 +362,8 @@ def generate_sparse_att(seq_len, n_vars, params, conj, time_start, pre_group_num
                                                    global_block_left=0, global_block_right=0, 
                                                    mem=False)
     sparse_attn_mask = [
-        full_bigbird_mask(from_seq_length=params.seq_len, 
-                          to_seq_length=params.seq_len,
+        full_bigbird_mask(from_seq_length=params.TSaS_len, 
+                          to_seq_length=params.TSaS_len,
                           from_block_size=1,
                           to_block_size=1, 
                           num_rand_blocks=20,
@@ -372,7 +377,7 @@ def generate_sparse_att(seq_len, n_vars, params, conj, time_start, pre_group_num
     
     sparse_attn_mask = np.array(sparse_attn_mask)
     if save:
-        np.save(params.root_path+'sparse_attn/sparse_attn_mask/sparse_attn_mask-'+str(params.seq_len)+'_'+time_start+'.npy', 
+        np.save(params.root_path+'sparse_attn/sparse_attn_mask/sparse_attn_mask-'+str(params.TSaS_len)+'_'+time_start+'.npy', 
                 sparse_attn_mask, allow_pickle=True)
     if use_mem and params.mem_len>0:
         print('Generate sparse attention mask for mem.')
@@ -380,11 +385,11 @@ def generate_sparse_att(seq_len, n_vars, params, conj, time_start, pre_group_num
             plan_num_rand_blocks_mem = num_rand_blocks_mem
         else:
             plan_num_rand_blocks_mem = int(num_rand_blocks_ratio*params.mem_len)
-        rand_attn_mem = bigbird_block_rand_mask_with_head(from_seq_length=params.seq_len, 
+        rand_attn_mem = bigbird_block_rand_mask_with_head(from_seq_length=params.TSaS_len, 
                                                           to_seq_length=params.mem_len, 
                                                           from_block_size=1, to_block_size=1, 
                                                           num_heads=conj.model.n_heads, 
-                                                          plan_from_length=[params.mem_len,params.seq_len], 
+                                                          plan_from_length=[params.mem_len,params.TSaS_len], 
                                                           plan_num_rand_blocks=[plan_num_rand_blocks_mem, 0], 
                                                           pre_group_num=pre_group_num,
                                                           window_block_left=n_vars, 
@@ -393,7 +398,7 @@ def generate_sparse_att(seq_len, n_vars, params, conj, time_start, pre_group_num
                                                           global_block_left=0, global_block_right=0, 
                                                           mem=True)
         sparse_attn_mask_mem = [
-            full_bigbird_mask(from_seq_length=params.seq_len,
+            full_bigbird_mask(from_seq_length=params.TSaS_len,
                               to_seq_length=params.mem_len,
                               from_block_size=1,
                               to_block_size=1,
