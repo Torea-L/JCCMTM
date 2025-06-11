@@ -4,10 +4,10 @@ import warnings
 import numpy as np
 import pandas as pd
 import torch
-from layers.basics import raw_series_decomp
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset
-# from utils.timefeatures import time_features
+
+from layers.basics import raw_series_decomp
 
 warnings.filterwarnings('ignore')
 
@@ -48,12 +48,15 @@ class PSMSegLoader(Dataset):
         if self.decomposition:
             data_res, data_trend = self.decomp(torch.from_numpy(data))
             data_res_test, data_trend_test = self.decomp(torch.from_numpy(test_data))
-        if self.composition=='trend':
-            self.test_decomp = data_trend_test
-            self.train_decomp = data_trend
+            if self.composition=='trend':
+                self.test_decomp = data_trend_test
+                self.train_decomp = data_trend
+            else:
+                self.test_decomp = data_res_test
+                self.train_decomp = data_res
         else:
-            self.test_decomp = data_res_test
-            self.train_decomp = data_res
+            self.test_decomp = self.test
+            self.train_decomp = self.train
         # self.val = self.test
         # self.val_decomp = self.test_decomp
         data_len = len(self.train)
@@ -122,12 +125,15 @@ class MSLSegLoader(Dataset):
         if self.decomposition:
             data_res, data_trend = self.decomp(torch.from_numpy(data))
             data_res_test, data_trend_test = self.decomp(torch.from_numpy(test_data))
-        if self.composition=='trend':
-            self.test_decomp = data_trend_test
-            self.train_decomp = data_trend
+            if self.composition=='trend':
+                self.test_decomp = data_trend_test
+                self.train_decomp = data_trend
+            else:
+                self.test_decomp = data_res_test
+                self.train_decomp = data_res
         else:
-            self.test_decomp = data_res_test
-            self.train_decomp = data_res
+            self.test_decomp = self.test
+            self.train_decomp = self.train
         # self.val = self.test
         # self.val_decomp = self.test_decomp
         data_len = len(self.train)
@@ -196,12 +202,15 @@ class SMAPSegLoader(Dataset):
         if self.decomposition:
             data_res, data_trend = self.decomp(torch.from_numpy(data))
             data_res_test, data_trend_test = self.decomp(torch.from_numpy(test_data))
-        if self.composition=='trend':
-            self.test_decomp = data_trend_test
-            self.train_decomp = data_trend
+            if self.composition=='trend':
+                self.test_decomp = data_trend_test
+                self.train_decomp = data_trend
+            else:
+                self.test_decomp = data_res_test
+                self.train_decomp = data_res
         else:
-            self.test_decomp = data_res_test
-            self.train_decomp = data_res
+            self.test_decomp = self.test
+            self.train_decomp = self.train
         # self.val = self.test
         # self.val_decomp = self.test_decomp
         data_len = len(self.train)
@@ -284,10 +293,11 @@ class SMDSegLoader(Dataset):
         # self.val = self.test
         # self.val_decomp = self.test_decomp
         self.val = self.train[(int)(data_len * 0.8):]
-        if self.decomposition:
-            self.val_decomp = self.train_decomp[(int)(data_len * 0.8):]
-        else:
-            self.val_decomp = self.train[(int)(data_len * 0.8):]
+        self.val_decomp = self.train_decomp[(int)(data_len * 0.8):]
+        # if self.decomposition:
+        #     self.val_decomp = self.train_decomp[(int)(data_len * 0.8):]
+        # else:
+        #     self.val_decomp = self.train[(int)(data_len * 0.8):]
         
         print("test:", self.test.shape)
         print("train:", self.train.shape)
@@ -355,12 +365,15 @@ class SWATSegLoader(Dataset):
         if self.decomposition:
             data_res, data_trend = self.decomp(torch.from_numpy(train_data))
             data_res_test, data_trend_test = self.decomp(torch.from_numpy(test_data))
-        if self.composition=='trend':
-            self.test_decomp = data_trend_test
-            self.train_decomp = data_trend
+            if self.composition=='trend':
+                self.test_decomp = data_trend_test
+                self.train_decomp = data_trend
+            else:
+                self.test_decomp = data_res_test
+                self.train_decomp = data_res
         else:
-            self.test_decomp = data_res_test
-            self.train_decomp = data_res
+            self.test_decomp = self.test
+            self.train_decomp = self.train
         self.val = self.test
         self.val_decomp = self.test_decomp
         
