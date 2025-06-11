@@ -31,13 +31,13 @@ def pretrain_data_generate(args_parse:argparse.Namespace, configs:argparse.Names
 
     features_multi_bsz = []
     n_patch, n_pred = 0, 0
-    batch_size = configs.data.batch_size
+    batch_size = configs.data.batch_num_use_mem
 
     border1, border2 = None, None
 
     if drop_list is not None: drop = True
 
-    if args_parse.task=='pred':
+    if args_parse.task=='LTSF':
         data, border1, border2, data_decomp = _read_data(
             args_parse=args_parse, configs=configs, 
             border1s=border1s, border2s=border2s, 
@@ -96,12 +96,12 @@ def pretrain_data_generate(args_parse:argparse.Namespace, configs:argparse.Names
 
     features_multi_bsz = np.array(features_multi_bsz).reshape(batch_size,-1)
     data = features_multi_bsz.transpose(1,0).reshape(-1,)
-        
+
     conj = "_%d_P=%d-S=%d-Ss=%d-MR=%.2f-PN=%d-MN=%d-BSZ=%d"%(configs.data.context_points, configs.data.patch_len, 
                                                              configs.data.stride, configs.data.stride_subseq,
                                                              configs.data.mask_ratio, 
                                                              n_patch, n_pred,
-                                                             configs.data.batch_size)
+                                                             configs.data.batch_num_use_mem)
     configs.data.num_predict = n_pred
     configs.data.patch_num = n_patch
     
@@ -124,7 +124,10 @@ def _read_data(args_parse:argparse.Namespace, configs:argparse.Namespace,
     print('Loading original data...')
     data_path = args_parse.data_path
     print('Dataset path : ', data_path)
-    if args_parse.dset=='Solar':
+    if 'PEMS' in args_parse.dset:
+        data_df_raw = np.load(data_path, allow_pickle=True)
+        data_df_raw = pd.DataFrame(data_df_raw['data'][:, :, 0])
+    elif args_parse.dset=='Solar':
         df_raw = []
         with open(data_path, "r", encoding='utf-8') as f:
             for line in f.readlines():
@@ -318,7 +321,7 @@ def get_tokens(data:torch.Tensor, data_decomp:torch.Tensor,
     
     num_vars = data.shape[1]
     
-    if args_parse.stage == 'finetune' and args_parse.task == 'pred':
+    if args_parse.stage == 'finetune' and args_parse.task == 'LTSF':
         pred_target, num_target = create_pred_target(data=data,
                                                      look_back_len=configs.data.context_points,
                                                      pred_len=configs.data.target_points,
