@@ -24,6 +24,8 @@ class Exp_Main(Exp_Basic):
         self.sparse_attn_mask, self.sparse_attn_mask_mem = self._get_sparse(time_start=time_start)
         self.model = self._build_model().to(self.device)
 
+        print(f'args.dset: {args.dset}')
+
     def _build_model(self):
         ## ==== Initialization of Pretrain Model ==== ##
         model = Pretrain_Model(configs=self.configs, attn_direction="uni", 
@@ -51,7 +53,7 @@ class Exp_Main(Exp_Basic):
         return model
 
     def _get_data(self):
-        dataset = get_dataset(root_path=self.args.root_path+'Datas', args=self.args, 
+        dataset = get_dataset(root_path=self.args.root_path+self.args.datasets, args=self.args, 
                               category=self.args.category, config=self.configs, file=self.args.dset)
         tr_dataloader = DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, 
                                    num_workers=self.args.num_workers, drop_last=True, pin_memory=True)
