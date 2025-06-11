@@ -14,10 +14,11 @@ Args:
 
 def _create_mask(qlen, mlen, k_dim, dtype, same_length=False):
     """create causal attention mask."""
-    attn_mask = torch.ones([qlen, qlen], dtype=dtype)
-    mask_u = torch.triu(attn_mask)  # Upper triangular part.
-    mask_dia = torch.tril(attn_mask) & torch.triu(attn_mask)  # Diagonal. Figure 2(c)
-    attn_mask_ = mask_u - mask_dia
+    # attn_mask = torch.ones([qlen, qlen], dtype=dtype)
+    # mask_u = torch.triu(attn_mask)  # Upper triangular part.
+    # mask_dia = torch.tril(attn_mask) & torch.triu(attn_mask)  # Diagonal. Figure 2(c)
+    # attn_mask_ = mask_u - mask_dia
+    attn_mask_ = torch.triu(torch.ones([qlen, qlen], dtype=dtype), diagonal=1)
     attn_mask_pad = torch.zeros([qlen, mlen], dtype=dtype)
     
     for i in range(qlen):
@@ -27,6 +28,8 @@ def _create_mask(qlen, mlen, k_dim, dtype, same_length=False):
     ret = torch.cat([attn_mask_pad, attn_mask_], dim=1)  # [qlen, klen]
     
     if same_length:
+        attn_mask = torch.ones([qlen, qlen], dtype=dtype)
+        mask_dia = torch.tril(attn_mask) & torch.triu(attn_mask)  # Diagonal. Figure 2(c)
         mask_l = torch.tril(attn_mask)  # Lower triangular part.
         ret = torch.cat([ret[:, :qlen] + mask_l - mask_dia, ret[:, qlen:]], dim=1)
 
@@ -64,10 +67,10 @@ def _generate_data_mask(perm_mask:Tensor, input_mask:Tensor=None, mlen:int=0, ba
     return data_mask
 
 def attention_mask(batch_size:int, num_vars:int, 
-                   qlen:int, qlen_uni:int, mlen:int, mlen_uni:int,
-                   input_mask:Tensor, input_mask_uni:Tensor,
-                   perm_mask:Tensor, perm_mask_uni:Tensor,
-                   attn_mask_cache:Tensor, attn_mask_uni_cache:Tensor,
+                   qlen_mul:int, qlen_uni:int, mlen_mul:int, mlen_uni:int,
+                   input_mask_mul:Tensor, input_mask_uni:Tensor,
+                   perm_mask_mul:Tensor, perm_mask_uni:Tensor,
+                   attn_mask_mul_cache:Tensor, attn_mask_uni_cache:Tensor,
                    n_cls:int=None, efficient=False, device='cpu',
                    attn_direction='uni', same_length=False):
     
@@ -84,7 +87,7 @@ def attention_mask(batch_size:int, num_vars:int,
         non_tgt_mask_uni : [bsz, n_vars, 1, P, PM]
     """
     attn_mask, attn_mask_uni, non_tgt_mask, non_tgt_mask_uni = None, None, None, None
-    attn_mask_cache, attn_mask_uni_cache = attn_mask_cache, attn_mask_uni_cache
+    # attn_mask_mul_cache, attn_mask_uni_cache = attn_mask_mul_cache, attn_mask_uni_cache
     ## causal attention mask
     if attn_direction == 'uni':
         if attn_mask_uni_cache is not None:
@@ -94,16 +97,16 @@ def attention_mask(batch_size:int, num_vars:int,
             attn_mask_uni_cache = attn_mask_uni
         if efficient and (n_cls is not None):
             PM = qlen_uni + mlen_uni
-            PM_mul = int((qlen + mlen)/num_vars)
+            PM_mul = int((qlen_mul + mlen_mul)/num_vars)
             if PM>=PM_mul:
                 attn_mask = attn_mask_uni[:,None,:].repeat(1,n_cls,1).reshape(-1, PM)
                 attn_mask = attn_mask[:, -PM_mul:]
                 attn_mask = attn_mask[:,:,None].repeat(1,1,n_cls).reshape(-1, PM_mul*n_cls)
             else:
-                attn_mask = _create_mask(qlen_uni, int(mlen/num_vars), k_dim=1, dtype=torch.int64, same_length=same_length).to(device)
+                attn_mask = _create_mask(qlen_uni, int(mlen_mul/num_vars), k_dim=1, dtype=torch.int64, same_length=same_length).to(device)
             non_tgt_mask = -torch.eye(qlen_uni*n_cls, dtype=torch.float32)
             if mlen_uni>0:
-                non_tgt_mask = torch.cat([torch.zeros([qlen_uni*n_cls, int(mlen/num_vars)*n_cls], dtype=torch.float32), 
+                non_tgt_mask = torch.cat([torch.zeros([qlen_uni*n_cls, int(mlen_mul/num_vars)*n_cls], dtype=torch.float32), 
                                           non_tgt_mask], dim=-1).to(device)
             else:
                 non_tgt_mask = non_tgt_mask.to(device)
@@ -112,11 +115,11 @@ def attention_mask(batch_size:int, num_vars:int,
         raise ValueError('Unsupported attention type: {}'.format(attn_direction))
     
     if attn_direction == 'uni':
-        if attn_mask_cache is not None:
-            attn_mask = attn_mask_cache
+        if attn_mask_mul_cache is not None:
+            attn_mask = attn_mask_mul_cache
         else:
-            attn_mask = _create_mask(qlen, mlen, k_dim=num_vars, dtype=torch.int64, same_length=same_length).to(device)
-            attn_mask_cache = attn_mask
+            attn_mask = _create_mask(qlen_mul, mlen_mul, k_dim=num_vars, dtype=torch.int64, same_length=same_length).to(device)
+            attn_mask_mul_cache = attn_mask
     
     ## data mask: input mask & perm mask
     """
@@ -125,7 +128,7 @@ def attention_mask(batch_size:int, num_vars:int,
     """
 
     if not efficient:
-        data_mask = _generate_data_mask(perm_mask=perm_mask, input_mask=input_mask, mlen=mlen, batch_size=batch_size)
+        data_mask = _generate_data_mask(perm_mask=perm_mask_mul, input_mask=input_mask_mul, mlen=mlen_mul, batch_size=batch_size)
         if data_mask is not None:
             if attn_mask is None:
                 attn_mask = data_mask[:, None, :, :]
@@ -133,8 +136,8 @@ def attention_mask(batch_size:int, num_vars:int,
                 attn_mask = data_mask[:, None, :, :] + attn_mask
 
     if (not efficient) and (attn_mask is not None):
-        non_tgt_mask = -torch.eye(qlen, dtype=torch.float32) 
-        non_tgt_mask = torch.cat([torch.zeros([qlen, mlen], dtype=torch.float32), non_tgt_mask], dim=-1).to(device)
+        non_tgt_mask = -torch.eye(qlen_mul, dtype=torch.float32) 
+        non_tgt_mask = torch.cat([torch.zeros([qlen_mul, mlen_mul], dtype=torch.float32), non_tgt_mask], dim=-1).to(device)
         non_tgt_mask = (attn_mask + non_tgt_mask).gt(0) # .type(dtype=torch.float32)
 
     data_mask_uni = _generate_data_mask(perm_mask=perm_mask_uni, input_mask=input_mask_uni,
@@ -153,5 +156,5 @@ def attention_mask(batch_size:int, num_vars:int,
     if attn_mask is not None:
         attn_mask = attn_mask.gt(0)
 
-    return attn_mask, attn_mask_uni, non_tgt_mask, non_tgt_mask_uni, attn_mask_cache, attn_mask_uni_cache
+    return attn_mask, attn_mask_uni, non_tgt_mask, non_tgt_mask_uni, attn_mask_mul_cache, attn_mask_uni_cache
     
