@@ -52,10 +52,14 @@ def data_revin(x:Tensor, revin:RevIN, mode:str, stream='h', target_masked_idx:Op
     return x
 
 class Model(nn.Module):
-    def __init__(self, configs, encoder):
+    def __init__(self, configs, encoder, cross_domain=False, n_vars_cross_domian=7):
         super(Model, self).__init__()
         self.configs = configs
         self.n_vars = configs.data.n_vars
+        '''if cross_domain:
+            self.revin = RevIN(num_features=n_vars_cross_domian)
+        else:
+            self.revin = RevIN(num_features=self.n_vars)'''
         self.revin = RevIN(num_features=self.n_vars)
         self.encoder = encoder
         self.norm_layer = nn.LayerNorm(configs.model.d_model)
