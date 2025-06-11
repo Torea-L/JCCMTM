@@ -3,8 +3,6 @@ import os
 import time
 import warnings
 
-warnings.filterwarnings('ignore')
-
 import numpy as np
 import torch
 import torch.multiprocessing
@@ -21,45 +19,44 @@ from sparse_attn.making_sparse import generate_sparse_att
 from torch.utils.tensorboard import SummaryWriter
 from utils.tools import EarlyStopping, adjust_learning_rate, adjustment
 
+warnings.filterwarnings('ignore')
 
-class Exp_Anomaly_Detection(Exp_Basic):
+class Exp_Main(Exp_Basic):
     def __init__(self, args, configs, setting, time_start):
-        super(Exp_Anomaly_Detection, self).__init__(args, configs, setting)
+        super(Exp_Main, self).__init__(args, configs, setting)
         ## ==== Initialization of Sparse Attention Mask ====
-        self.sparse_attn_mask, self.sparse_attn_mask_mem = self._sparse(time_start=time_start)
+        self.sparse_attn_mask, self.sparse_attn_mem_mask = self._sparse(time_start=time_start)
         self.model = self._build_model().to(self.device)
 
     def _build_model(self):
         ## ==== Initialization of Pretrain Model ====
         model_pre = Pretrain_Model(configs=self.configs, attn_direction="uni", 
-                               clamp_len=-1, same_length=False, 
-                               reuse_len=self.args.reuse_len, reuse_len_uni=self.args.reuse_len_uni,
-                               mem_len=self.args.mem_len, mem_len_uni=self.args.mem_len_uni,
-                               mul_uni_ratio=self.args.mul_uni_ratio, kernel_size=self.args.kernel_size,
-                               group_token_num=self.args.group_token_num,
-                               sparse_attn=self.sparse_attn_mask, sparse_attn_mem=self.sparse_attn_mask_mem,
-                               efficient=self.args.efficient, strategy=self.args.strategy)
+                                   clamp_len=-1, same_length=False, 
+                                   reuse_len_mul=self.args.reuse_len, reuse_len_uni=self.args.reuse_len_uni,
+                                   mem_len_mul=self.args.mem_len, mem_len_uni=self.args.mem_len_uni,
+                                   mul_uni_ratio=self.args.mul_uni_ratio, group_token_num=self.args.group_token_num,
+                                   efficient=self.args.efficient)
         if self.args.No_Pre:
             print('No prerained model used.')
         else:
             print('Loading model state dict...')
             pre_state_dict = torch.load(
-                os.path.join(self.args.root_path, self.args.model_save_path, 
+                os.path.join(self.args.root_path, self.args.checkpoints, 
                              'pretrain/bestloss/', self.setting, 
                              'state_dict-bestloss-' + self.args.pretrain_model_id + '.pkl'))
-            model_pre.load_state_dict(pre_state_dict['model_state_dict'])
+            model_pre.load_state_dict(pre_state_dict)
             print('Finish.')
 
-        model = Anomaly_Detection_Model(dropout=self.configs.model.dropout, encoder=model_pre.encoder, 
-                                        decomposition=self.args.decomposition, strategy=self.args.strategy)
-        if self.args.linear_prob:
-            for name, param in model.named_parameters():
-                if "encoder" in name:
-                    param.requires_grad = False
+        model = Anomaly_Detection_Model(dropout=self.configs.model.dropout, 
+                                        encoder=model_pre.encoder, 
+                                        decomposition=self.args.decomposition, 
+                                        strategy=self.args.strategy)
+        
+        trainable_num = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print("trainable parameters:", str(trainable_num/1e6), "M")
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
-        # torch.save(model.state_dict(), '/home/CICDTSM_BSZF/checkpoints/pred/bestloss/CICDTSM-efficient_weather_ftM_sl96_P12_S12_Ss96_MR0.30_PN=8_MN=50_B=20_dm256_nh8_el2_df512/96-96' + '/' + 'checkpoint.pkl')
         return model
 
     def _get_data(self, flag):
@@ -68,19 +65,16 @@ class Exp_Anomaly_Detection(Exp_Basic):
 
     def _select_optimizer(self):
         model_optim = None
-        if self.args.linear_prob:
-            params = self.model.recons_head.parameters()
-        else:
-            params = self.model.parameters()
+        params = self.model.parameters()
         if self.args.optim_type == 'Adam':
             model_optim = optim.Adam(params, 
                                      lr=self.args.learning_rate, 
                                      weight_decay=self.args.weight_decay)
         elif self.args.optim_type == 'SGD':
             model_optim = optim.SGD(params, 
-                              lr=self.args.learning_rate, 
-                              momentum=0.8, 
-                              weight_decay=self.args.weight_decay)
+                                    lr=self.args.learning_rate, 
+                                    momentum=0.8, 
+                                    weight_decay=self.args.weight_decay)
         return model_optim
 
     def _select_criterion(self):
@@ -109,15 +103,16 @@ class Exp_Anomaly_Detection(Exp_Basic):
             print('Generating new sparse attention mask matrix...')
             if self.args.mem_len==0:
                 use_mem = False
-            sparse_attn_mask, sparse_attn_mask_mem = generate_sparse_att(seq_len=self.args.seq_len,
-                                                                         n_vars=self.configs.data.n_vars,
-                                                                         params=self.args,
-                                                                         conj=self.configs,
-                                                                         time_start=time_start,
-                                                                         pre_group_num=self.args.pre_group_num,
-                                                                         use_mem=use_mem,
-                                                                         num_rand_blocks=self.args.block_num,
-                                                                         num_rand_blocks_ratio = self.args.random_ratio)
+            sparse_attn_mask, sparse_attn_mask_mem = generate_sparse_att(
+                seq_len=self.args.seq_len,
+                n_vars=self.configs.data.n_vars,
+                params=self.args,
+                conj=self.configs,
+                time_start=time_start,
+                pre_group_num=self.args.pre_group_num,
+                use_mem=use_mem,
+                num_rand_blocks=self.args.block_num,
+                num_rand_blocks_ratio = self.args.random_ratio)
         if sparse_attn_mask is not None:
             print('Sparse attention mask matrix preprocessing')
             sparse_attn_mask = 1-torch.from_numpy(sparse_attn_mask.astype(np.int64)).float()
@@ -134,11 +129,13 @@ class Exp_Anomaly_Detection(Exp_Basic):
         total_loss = []
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_x_decomp, _) in enumerate(vali_loader):
+            for _, (batch_x, batch_x_decomp, _) in enumerate(vali_loader):
                 batch_x = batch_x.float().to(self.device)
                 batch_x_decomp = batch_x_decomp.float().to(self.device)
 
-                outputs = self.model(x=batch_x, x_decomp=batch_x_decomp)
+                outputs = self.model(x=batch_x, x_decomp=batch_x_decomp,
+                                     sparse_attn_mask=self.sparse_attn_mask,
+                                     sparse_attn_mem_mask=self.sparse_attn_mem_mask)
                 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, :, f_dim:]
@@ -169,7 +166,7 @@ class Exp_Anomaly_Detection(Exp_Basic):
 
         ## ==== Training ====
         print('End-to-end fine-tuning......')
-        best_model_path = os.path.join(self.args.root_path, self.args.model_save_path, self.args.task, 'bestloss/', self.setting,
+        best_model_path = os.path.join(self.args.root_path, self.args.checkpoints, self.args.task, 'bestloss/', self.setting,
                                    str(self.configs.data.context_points)+'-'+str(self.configs.data.target_points))
         if not os.path.exists(best_model_path):
             print('Model save path does not exist, creating folder : ' + best_model_path)
@@ -208,7 +205,9 @@ class Exp_Anomaly_Detection(Exp_Basic):
                         outputs = outputs[:, :, f_dim:]
                         loss = criterion(outputs, batch_x)
                 else:
-                    outputs = self.model(x=batch_x, x_decomp=batch_x_decomp)
+                    outputs = self.model(x=batch_x, x_decomp=batch_x_decomp,
+                                         sparse_attn_mask=self.sparse_attn_mask,
+                                         sparse_attn_mem_mask=self.sparse_attn_mem_mask)
                     outputs = outputs[:, :, f_dim:]
                     loss = criterion(outputs, batch_x)
                 
@@ -266,7 +265,7 @@ class Exp_Anomaly_Detection(Exp_Basic):
         if load:
             print('loading model...')
             state_dict = torch.load(
-                os.path.join(self.args.root_path, self.args.model_save_path, 
+                os.path.join(self.args.root_path, self.args.checkpoints, 
                              self.args.task, 'bestloss/', self.setting, 
                              str(self.configs.data.context_points)+'-'+str(self.configs.data.target_points),
                              'checkpoint.pkl'))
@@ -314,9 +313,9 @@ class Exp_Anomaly_Detection(Exp_Basic):
         attens_energy = np.concatenate(attens_energy, axis=0).reshape(-1)
         
         test_energy = np.array(attens_energy)
-        
-        # combined_energy = np.concatenate([train_energy, test_energy], axis=0)
-        combined_energy = test_energy
+        print('np.max(test_energy) : ', np.max(test_energy))
+        combined_energy = np.concatenate([train_energy, test_energy], axis=0)
+        # combined_energy = test_energy
 
         test_labels = np.concatenate(test_labels, axis=0).reshape(-1)
         test_labels = np.array(test_labels)
