@@ -96,34 +96,21 @@ Key Parameter Specifications:​​
 --​**strategy**:  Channel modeling strategy, options: ['CICD', 'CI', 'CD']
 
 
-​--**decomposition**​ (bool):
+​--**decomposition**​ (bool):  Enables data pre-decomposition when True, generating trend and residual components
 
-Enables data pre-decomposition when True, generating trend and residual components
+--component:  Input component for Uni-Module, options: ['trend', 'residual']; Only effective when decomposition=True
 
---component: 
-
-Input component for Uni-Module, options: ['trend', 'residual']
-Only effective when decomposition=True
+--kernel_size: Specifies the convolutional kernel size for average pooling when extracting 'trend' components. *It must be odd!!*
 
 
---​**load_sparse**​ (bool):
+--​**load_sparse**​ (bool):  Enables sparse attention (default=True). Set --sparse_id='Null' to disable sparse masking.
 
-Enables sparse attention (default=True). Set --sparse_id='Null' to disable sparse masking.
-
---sparse_id: 
-
-Unique identifier for sparse attention matrix files
+--sparse_id:  Unique identifier for sparse attention matrix files
 
 
---​**efficient**​ (bool):
+--​**efficient**​ (bool):  Activates JCCMTM-E when True
 
-Activates JCCMTM-E when True
-
---group_token_num (int):
-
-Number of global tokens in JCCMTM-E
+--group_token_num (int):  Number of global tokens in JCCMTM-E
 
 
---​**cross_domain**​ (bool):
-
-Must be set to True for cross-domain scenarios
+--​**cross_domain**​ (bool):  Must be set to True for cross-domain scenarios
