@@ -93,26 +93,39 @@ python -u run_long_term_forecasting.py \
 Key Parameter Specifications:​​
 
 
---​**strategy**​
+--​**strategy**:
+​
 Channel modeling strategy, options: ['CICD', 'CI', 'CD']
 
 
-​**--decomposition**​ (bool)
+​--**decomposition**​ (bool):
+
 Enables data pre-decomposition when True, generating trend and residual components
-• --component: Input component for Uni-Module, options: ['trend', 'residual']
+
+--component: 
+
+Input component for Uni-Module, options: ['trend', 'residual']
 Only effective when decomposition=True
 
 
-​**--load_sparse**​ (bool)
+--​**load_sparse**​ (bool):
+
 Enables sparse attention (default=True). Set --sparse_id='Null' to disable sparse masking.
-• --sparse_id: Unique identifier for sparse attention matrix files
+
+--sparse_id: 
+
+Unique identifier for sparse attention matrix files
 
 
-​**--efficient**​ (bool)
+--​**efficient**​ (bool):
+
 Activates JCCMTM-E when True
-• --group_token_num (int):
+
+--group_token_num (int):
+
 Number of global tokens in JCCMTM-E
 
 
-​**--cross_domain**​ (bool)
+--​**cross_domain**​ (bool):
+
 Must be set to True for cross-domain scenarios
