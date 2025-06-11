@@ -105,7 +105,13 @@ class JCC_backbone(nn.Module):
         if self.mem_len_mul==0: mlen_mul = 0
         else: mlen_mul = mems_mul[0].size(0) if mems_mul is not None else 0
         if self.mem_len_uni==0: mlen_uni = 0
-        else: mlen_uni = mems_uni[0][0].size(2) if (mems_uni is not None)and(len(mems_uni)>0) else 0
+        else: 
+            # mlen_uni = 0
+            # if (mems_uni is not None):
+            #     print('mems_uni = ', mems_uni)
+            #     if len(mems_uni)>0 and print(len(mems_uni[0]))>0:
+            #         mlen_uni = mems_uni[0][0].size(2)
+            mlen_uni = mems_uni[0][0].size(2) if (mems_uni is not None)and(len(mems_uni[0])>0) else 0
         klen_mul = qlen_mul + mlen_mul
         klen_uni = qlen_uni + mlen_uni
 
@@ -358,7 +364,7 @@ class JCCEncoderLayer(nn.Module):
 
         # learnable vector `u` in relative position encoding
         self.r_w_bias_mul = nn.Parameter(nn.init.xavier_normal_(
-            torch.randn(configs.model.n_heads, configs.model.d_head)))  
+            torch.randn(configs.model.n_heads, configs.model.d_head))) 
         self.r_w_bias_uni = nn.Parameter(nn.init.xavier_normal_(
             torch.randn(int(mul_uni_ratio), configs.model.n_heads, configs.model.d_head)))
         # learnable vector `v` in relative position encoding
@@ -483,6 +489,12 @@ class JCCEncoderLayer(nn.Module):
         r_s_bias_uni = None
         seg_embed_mul = None
         seg_embed_uni = None
+
+        attn_prob_lst_mul = None
+        attn_score_lst_mul = None
+        attn_prob_lst_uni = None
+        attn_score_lst_uni = None
+
         if self.use_seg_emb and (seg_id is not None):
             r_s_bias_mul = self.r_s_bias_mul
             seg_embed_mul = self.seg_embed_mul
@@ -498,6 +510,10 @@ class JCCEncoderLayer(nn.Module):
                     sparse_attn=sparse_attn_mask, sparse_attn_mem=sparse_attn_mask_mem, 
                     pretrain=pretrain, prev=prev_mul)
             prev_mul = attn_score_lst_mul
+
+            if pretrain:
+                output_g_mul = self.PW_FFN_mul(inp=output_g_mul, stream='g')
+            output_h_mul = self.PW_FFN_mul(inp=output_h_mul, stream='h')
         if 'CI' in strategy:
             for k in range(self.mul_uni_ratio):
                 ## cache new mems
@@ -524,10 +540,10 @@ class JCCEncoderLayer(nn.Module):
                     output_g_uni = PosFFN_uni(inp=output_g_uni, stream='g')
                 output_h_uni = PosFFN_uni(inp=output_h_uni, stream='h')
 
-        if 'CD' in strategy:
-            if pretrain:
-                output_g_mul = self.PW_FFN_mul(inp=output_g_mul, stream='g')
-            output_h_mul = self.PW_FFN_mul(inp=output_h_mul, stream='h')
+        # if 'CD' in strategy:
+        #     if pretrain:
+        #         output_g_mul = self.PW_FFN_mul(inp=output_g_mul, stream='g')
+        #     output_h_mul = self.PW_FFN_mul(inp=output_h_mul, stream='h')
         
         if strategy == 'CICD':
             #### Uni-to-Mul ####
@@ -556,6 +572,14 @@ class JCCEncoderLayer(nn.Module):
                 output_g_uni2mul = torch.einsum('bkmh,bkm->bmh', output_g_uni, target_masked_idx)
                 output_g_mul += output_g_uni2mul
                 output_g_mul = self.Norm(output_g_mul)
+
+        # if 'CD' not in strategy:
+        elif strategy == 'CI':
+            if pretrain:
+                output_g_mul = torch.einsum('bkmh,bkm->bmh', output_g_uni, target_masked_idx)
+                output_g_mul = self.Norm(output_g_mul)
+            output_h_mul = einops.rearrange(output_h_uni, 'b k i d -> b (i k) d') # output_h_uni2mul : [B, P*N, D]
+            output_h_mul = self.Norm(output_h_mul)
 
         return output_g_mul, output_h_mul, output_g_uni, output_h_uni, new_mem_mul, new_mems_uni, \
     attn_prob_lst_mul, attn_prob_lst_uni, attn_score_lst_mul, attn_score_lst_uni, prev_mul, prev_uni
