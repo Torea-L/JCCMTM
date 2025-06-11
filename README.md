@@ -93,9 +93,7 @@ python -u run_long_term_forecasting.py \
 Key Parameter Specifications:​​
 
 
---​**strategy**:
-​
-Channel modeling strategy, options: ['CICD', 'CI', 'CD']
+--​**strategy**:  Channel modeling strategy, options: ['CICD', 'CI', 'CD']
 
 
 ​--**decomposition**​ (bool):
