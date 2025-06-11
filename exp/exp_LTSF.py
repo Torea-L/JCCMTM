@@ -24,34 +24,49 @@ class Exp_Main(Exp_Basic):
     def __init__(self, args, configs, setting, time_start):
         super(Exp_Main, self).__init__(args, configs, setting)
         ## ==== Initialization of Sparse Attention Mask ====
-        self.sparse_attn_mask, self.sparse_attn_mask_mem = self._sparse(time_start=time_start)
+        self.sparse_attn_mask, self.sparse_attn_mem_mask = self._sparse(time_start=time_start)
+        self.pre_model_path = args.pre_model_path
         self.model = self._build_model().to(self.device)
 
     def _build_model(self):
         ## ==== Initialization of Pretrain Model ====
         model_pre = Pretrain_Model(configs=self.configs, attn_direction="uni", 
-                               clamp_len=-1, same_length=False, 
-                               reuse_len_mul=self.args.reuse_len, reuse_len_uni=self.args.reuse_len_uni,
-                               mem_len_mul=self.args.mem_len, mem_len_uni=self.args.mem_len_uni,
-                               mul_uni_ratio=self.args.mul_uni_ratio, group_token_num=self.args.group_token_num,
-                            #    sparse_attn=self.sparse_attn_mask, sparse_attn_mem=self.sparse_attn_mask_mem,
-                               efficient=self.args.efficient)
+                                   clamp_len=-1, same_length=False, 
+                                   reuse_len_mul=self.args.reuse_len, reuse_len_uni=self.args.reuse_len_uni,
+                                   mem_len_mul=self.args.mem_len, mem_len_uni=self.args.mem_len_uni,
+                                   mul_uni_ratio=self.args.mul_uni_ratio, 
+                                   group_token_num=self.args.group_token_num,
+                                   efficient=self.args.efficient)
         if self.args.No_Pre:
             print('No prerained model used.')
         else:
             print('Loading model state dict...')
-            pre_state_dict = torch.load(
-                os.path.join(self.args.root_path, self.args.checkpoints, 
-                             'pretrain/bestloss/', self.setting, 
-                             'state_dict-bestloss-' + self.args.pretrain_model_id + '.pkl'))
-            # model_pre.load_state_dict(pre_state_dict['model_state_dict'])
-            model_pre.load_state_dict(pre_state_dict)
+            if self.pre_model_path is not None:
+                pre_state_dict = torch.load(
+                    os.path.join(self.args.root_path, self.args.checkpoints, 
+                                 'pretrain/bestloss/', self.pre_model_path,
+                                 'state_dict-bestloss-' + self.args.pretrain_model_id + '.pkl'))
+            else:
+                pre_state_dict = torch.load(
+                    os.path.join(self.args.root_path, self.args.checkpoints, 
+                                 'pretrain/bestloss/', self.setting, 
+                                 'state_dict-bestloss-' + self.args.pretrain_model_id + '.pkl'))
+                
+            if self.args.cross_domain:
+                pre_state_dict.pop("encoder.revin.affine_weight")
+                pre_state_dict.pop("encoder.revin.affine_bias")
+            
+            missing_keys, unexpected_keys = model_pre.load_state_dict(pre_state_dict, strict=False)
+            print("Missing keys (required by the current model but not available in the pre trained model):", missing_keys)
+            print("Unexpected key (pre trained model has it, but the current model does not need it):", unexpected_keys)
             print('Finish.')
 
         model = Prediction_Model(pred_len=self.configs.data.target_points, 
                                  dropout=self.configs.model.dropout, 
                                  encoder=model_pre.encoder, 
-                                 decomposition=self.args.decomposition, strategy=self.args.strategy)
+                                 decomposition=self.args.decomposition, strategy=self.args.strategy,
+                                 cross_domain=self.args.cross_domain, 
+                                 n_vars_cross_domain=self.configs.data.n_vars)
         
         trainable_num = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print("trainable parameters:", str(trainable_num/1e6), "M")
@@ -72,9 +87,9 @@ class Exp_Main(Exp_Basic):
                                      weight_decay=self.args.weight_decay)
         elif self.args.optim_type == 'SGD':
             model_optim = optim.SGD(self.model.parameters(), 
-                              lr=self.args.learning_rate, 
-                              momentum=0.8, 
-                              weight_decay=self.args.weight_decay)
+                                    lr=self.args.learning_rate, 
+                                    momentum=0.8, 
+                                    weight_decay=self.args.weight_decay)
         return model_optim
 
     def _select_criterion(self):
@@ -133,7 +148,9 @@ class Exp_Main(Exp_Basic):
                 batch_y = batch_y.float()
                 batch_x_decomp = batch_x_decomp.float().to(self.device)
 
-                outputs = self.model(x=batch_x, x_decomp=batch_x_decomp)
+                outputs = self.model(x=batch_x, x_decomp=batch_x_decomp,
+                                     sparse_attn_mask=self.sparse_attn_mask,
+                                     sparse_attn_mem_mask=self.sparse_attn_mem_mask)
                 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.configs.data.target_points:, f_dim:]
@@ -208,15 +225,17 @@ class Exp_Main(Exp_Basic):
                         batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                         loss = criterion(outputs, batch_y)
                 else:
-                    outputs = self.model(batch_x, x_decomp=batch_x_decomp)
+                    outputs = self.model(batch_x, x_decomp=batch_x_decomp,
+                                         sparse_attn_mask=self.sparse_attn_mask,
+                                         sparse_attn_mem_mask=self.sparse_attn_mem_mask)
                     
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     loss = criterion(outputs, batch_y)
                     
-                train_loss += loss.item()
+                train_loss += loss.item()*batch_x.shape[0]
 
-                if (i + 1) % 200 == 0:
+                if (i + 1) % 500 == 0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
@@ -235,7 +254,8 @@ class Exp_Main(Exp_Basic):
             print("Epoch: {} cost time: {} lr: {}".format(epoch + 1, time.time() - epoch_time, 
                                                       model_optim.state_dict()['param_groups'][0]['lr']))
             '''scheduler.step()'''
-            train_loss = train_loss/num_samples*self.args.batch_size
+            # train_loss = train_loss/num_samples*self.args.batch_size
+            train_loss = train_loss/num_samples
             vali_loss = self.vali(vali_loader, criterion)
             test_loss = self.vali(test_loader, criterion)
 
@@ -262,15 +282,26 @@ class Exp_Main(Exp_Basic):
 
         return self.model
 
-    def test(self, save_result=False, test=False, setting_pred=None, return_attn=False, visualization=False):
+    def test(self, save_result=False, test=False, model_path=None, 
+             setting_pred=None, return_attn=False, visualization=False):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
-            pred_state_dict = torch.load(
-                os.path.join(self.args.root_path, self.args.checkpoints, 
-                             self.args.task, 'bestloss/', self.setting, 
-                             str(self.configs.data.context_points)+'-'+str(self.configs.data.target_points),
-                             'checkpoint.pkl'))
+            if model_path is not None:
+                pred_state_dict = torch.load(
+                    os.path.join(self.args.root_path, self.args.checkpoints, 
+                                 self.args.task, 'bestloss/', model_path,
+                                 str(self.configs.data.context_points)+'-'+str(self.configs.data.target_points),
+                                'checkpoint.pkl'
+                                )
+                    )
+            else:
+                pred_state_dict = torch.load(
+                    os.path.join(self.args.root_path, self.args.checkpoints, 
+                                 self.args.task, 'bestloss/', self.setting, 
+                                str(self.configs.data.context_points)+'-'+str(self.configs.data.target_points),
+                                'checkpoint.pkl')
+                    )
             self.model.load_state_dict(pred_state_dict)
         
         test_loss_MSE = 0.0
@@ -313,9 +344,14 @@ class Exp_Main(Exp_Basic):
                 else:
                     if return_attn:
                         outputs, attn_prob_lst, attn_score_lst = self.model(
-                            x=batch_x, x_decomp=batch_x_decomp, return_att=return_attn)
+                            x=batch_x, x_decomp=batch_x_decomp, 
+                            sparse_attn_mask=self.sparse_attn_mask,
+                            sparse_attn_mem_mask=self.sparse_attn_mem_mask,
+                            return_att=return_attn)
                     else:
-                        outputs = self.model(x=batch_x, x_decomp=batch_x_decomp)
+                        outputs = self.model(x=batch_x, x_decomp=batch_x_decomp,
+                                             sparse_attn_mask=self.sparse_attn_mask,
+                                             sparse_attn_mem_mask=self.sparse_attn_mem_mask,)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 
@@ -396,7 +432,8 @@ class Exp_Main(Exp_Basic):
         mae, mse = test_loss_MAE/num_samples, test_loss_MSE/num_samples
 
         # mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print('mse:{}, mae:{}'.format(mse, mae))
+        print('History Length: {} Prediction Length: {} \n mse:{}, mae:{} \n'.format(
+            self.configs.data.context_points, self.configs.data.target_points, mse, mae))
 
         f = open(result_file, 'a')
         f.write('History Length{}-Prediction Length{} \n  MSE:{} MAE:{}\n'.format(
