@@ -4,6 +4,8 @@
 
 The experimental procedure consists of three key steps:
 
-​Pre-training Data Preparation: The processed data is saved as .npy files for reusable storage upon completion;
-​Pre-training Phase;
-​Sub-task Fine-tuning.
+[1] ​Pre-training Data Preparation: The processed data is saved as .npy files for reusable storage upon completion;
+
+​[2] Pre-training Phase;
+
+​[3] Sub-task Fine-tuning.
