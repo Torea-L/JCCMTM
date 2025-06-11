@@ -48,7 +48,6 @@ def head_projection(h:Tensor, name:str, proj_weight:Tensor=None, attn_type='Mul'
         raise ValueError('Unknown `name` {}.'.format(name))
     
     if attn_type=='Mul':
-        # head = torch.einsum('ibh,hnd->ibnd', h, proj_weight)
         head = torch.einsum('bkh,hnd->bknd', h, proj_weight)
     else:
         head = torch.einsum('bkih,hnd->bkind', h, proj_weight)
@@ -138,7 +137,11 @@ class RelAttention(nn.Module):
 
         if k_head_r is not None:
             #### content based attention score
+            # print('queries.shape = ', queries.shape)
+            # print('r_w_bias.shape = ', r_w_bias.shape)
+            # print('keys.shape = ', keys.shape)
             ac = torch.einsum('bind,bjnd->bnij', queries + r_w_bias, keys)
+            
             #### position based attention score
             # print('queries.shape = ', queries.shape)
             # print('r_r_bias.shape = ', r_r_bias.shape)
@@ -504,6 +507,7 @@ class MultiheadRelAttention(nn.Module):
             attn_score_h_prev, attn_score_g_prev = None, None
 
         if sparse_attn is not None:
+            # print(f'MultiheadRelAttention, NOT None, sparse_attn.shape = {sparse_attn.shape}')
             if sparse_attn_mem is not None:
                 sparse_attn = torch.cat([sparse_attn_mem, sparse_attn], dim=-1)
         
