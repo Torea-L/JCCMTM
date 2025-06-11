@@ -24,8 +24,10 @@ parser.add_argument('--cfg', type=str, required=True, default='ETTm_pretrain.yam
 
 # data loader
 parser.add_argument('--dset', type=str, default='ETTh2', help='dataset name')
-parser.add_argument('--root_path', type=str, default='/home/JCCMTM/', help='root path of data files')
+parser.add_argument('--root_path', type=str, default='/home/JCCMTM-submit/', help='root path of data files')
 parser.add_argument('--data_path', type=str, default='ETTm1.csv', help='data file')
+parser.add_argument('--datasets', type=str, default='datasets', help='file path of the dataset')
+
 parser.add_argument('--features', type=str, default='M', 
                     help='forecasting task, options:[M, S, MS]; \
                         M:multivariate predict multivariate, \
@@ -48,7 +50,8 @@ parser.add_argument('--padding_patch', default='end', help='None: None; end: pad
 # sparse attention
 parser.add_argument('--load_sparse', action='store_true', 
                     help="Whether to load an pre-generated sparse attention mask")
-parser.add_argument('--block_num', type=int, default=None)
+parser.add_argument('--block_num', type=int, default=None, help='The number of tokens masked in the random attention mask. \
+                    If None, use `random_ratio` to calculate the number')
 parser.add_argument('--pre_group_num', type=int, default=0)
 parser.add_argument('--random_ratio', type=float, default=0.)
 parser.add_argument('--sparse_path', type=str, default='./sparse_attn')
@@ -65,7 +68,7 @@ parser.add_argument('--temp_model_save', action='store_true', help="Saving temp 
 parser.add_argument('--seq_len', type=int, default=-1, help="input sequence length")
 parser.add_argument('--enc_in', type=int, default=-1, help='encoder input size')
 parser.add_argument('--dec_in', type=int, default=-1, help='decoder input size')
-parser.add_argument('--c_out', type=int, default=7, help='output size')
+# parser.add_argument('--c_out', type=int, default=7, help='output size')
 parser.add_argument('--d_model', type=int, default=-1, help='dimension of model')
 parser.add_argument('--n_heads', type=int, default=-1, help='num of heads')
 parser.add_argument('--e_layers', type=int, default=-1, help='num of encoder layers')
@@ -81,15 +84,13 @@ parser.add_argument('--kernel_size', type=int, default=-1,
 #                     help='whether to use distilling in encoder, using this argument means not using distilling',
 #                     default=True)
 
-# # inputation task
-# parser.add_argument('--mask_rate', type=float, default=-1, help='mask ratio')
-
 # JCCMTM params
 parser.add_argument('--TSaS_len', type=int, default=-1, help="Number of tokens in the TSaS.")
 parser.add_argument('--reuse_len', type=int, default=0,
                     help="Number of tokens that can be reused as memory in Multi-Module.")
 parser.add_argument('--reuse_len_uni', type=int, default=0,
                     help="Number of tokens that can be reused as memory in Uni-Module.")
+# parser.add_argument('--use_mem', action='store_true', help='If `True`, use memory in pre-training')
 parser.add_argument('--mem_len', type=int,default=0, 
                     help="Number of tokens to cache in Multi-Module.")
 parser.add_argument('--mem_len_uni', type=int,default=-1,  
@@ -157,10 +158,10 @@ if __name__ == '__main__':
         configs.data.stride, configs.data.stride_subseq, 
         configs.data.mask_ratio, 
         configs.data.patch_num, configs.data.num_predict, 
-        configs.data.batch_size)
+        configs.data.batch_num_use_mem)
     
     # setting record of experiments
-    setting = '{}_{}_ft{}_{}_dm{}_nh{}_el{}_dl{}_df{}'.format(
+    setting = '{}_{}_ft{}{}_dm{}_nh{}_el{}_dl{}_df{}'.format(
         args.model, args.dset, args.features,
         conj,
         args.d_model,
