@@ -6,6 +6,7 @@ import argparse
 from layers.basics import series_decomp
 from data_provider.data_utils import creat_patch
 from models.JCCMTM import data_revin, Model
+from layers.revin import RevIN
 from models.JCC_backbone import JCC_backbone
 
 
@@ -95,6 +96,7 @@ class Prediction_Head(nn.Module):
     def __init__(self, configs, pred_len, head_dropout=0.1):
         super(Prediction_Head, self).__init__()
         self.num_patch = configs.data.patch_num
+        # self.n_vars = configs.data.n_vars
         self.d_model = configs.model.d_model
 
         self.flatten = nn.Flatten(start_dim=-2)
@@ -114,13 +116,17 @@ class Prediction_Head(nn.Module):
         return x
     
 class Prediction_Model(nn.Module):
-    def __init__(self, pred_len:int, dropout:float, encoder:nn.Module, decomposition=True, component='trend', strategy='CICD'):
+    def __init__(self, pred_len:int, dropout:float, encoder:nn.Module, 
+                 decomposition=True, component='trend', strategy='CICD',
+                 cross_domain=False, n_vars_cross_domain=7):
         super(Prediction_Model, self).__init__()
         self.configs = encoder.configs
         self.decomposition = decomposition
         self.component = component
         self.strategy = strategy
 
+        # if self.decomposition:
+        #     self.decomp_module = series_decomp(self.configs.model.kernel_size)
         self.encoder = encoder
         self.encoder.pos_emb_mul = None
         self.encoder.pos_emb_uni = None
@@ -130,9 +136,14 @@ class Prediction_Model(nn.Module):
         self.encoder.klen_uni = self.configs.data.patch_num
         self.encoder.klen = self.configs.data.patch_num*self.configs.data.n_vars
 
+        '''if cross_domain:
+            self.encoder.revin = RevIN(num_features=n_vars_cross_domain)'''
+
         self.pred_head = Prediction_Head(self.configs, pred_len, dropout)
 
-    def forward(self, x:Tensor, x_decomp:Tensor, return_att=False):
+    def forward(self, x:Tensor, x_decomp:Tensor, 
+                sparse_attn_mask:Tensor=None, sparse_attn_mem_mask:Tensor=None,
+                return_att=False):
         # Decomposition
         """
         x :             [Batch, Input length, Channel]
@@ -141,6 +152,10 @@ class Prediction_Model(nn.Module):
         """
         N = x.shape[-1]
         self.configs.data.bsz_efficient = x.shape[0]
+        # if self.decomposition:
+        #     res_init, trend_init = self.decomp_module(x)
+        #     if self.component=='trend': x_decomp = trend_init
+        #     else: x_decomp = res_init
         # Patching
         """
         inp_k :         [Batch, Channel, patch_num, patch_len]
@@ -167,7 +182,9 @@ class Prediction_Model(nn.Module):
             inp_decomp = inp_decomp.permute(0, 2, 1, 3)
 
         _, output_h, _, _, _, attn_prob_lst, attn_score_lst = \
-            self.encoder(inp_k, inp_decomp, pretrain=False, strategy=self.strategy)
+            self.encoder(inp_k, inp_decomp, 
+                         sparse_attn_mask=sparse_attn_mask, sparse_attn_mem_mask=sparse_attn_mem_mask,
+                         pretrain=False, strategy=self.strategy)
         # Decoder
         output_h = einops.rearrange(output_h, 'b p n d -> b n d p', n=N)
         dec_out = self.pred_head(output_h) # [bsz, n_vars, pred_len]
@@ -175,6 +192,7 @@ class Prediction_Model(nn.Module):
         # De-Normalization
         dec_out = dec_out.permute(0, 2, 1)
         dec_out = self.encoder.revin(dec_out, 'denorm')
+        # dec_out = dec_out.permute(0, 2, 1)
 
         if return_att:
             return dec_out, attn_prob_lst, attn_score_lst
@@ -186,6 +204,7 @@ class Anomaly_Detection_Head(nn.Module):
     def __init__(self, configs, head_dropout=0.1):
         super(Anomaly_Detection_Head, self).__init__()
         self.num_patch = configs.data.patch_num
+        # self.n_vars = configs.data.n_vars
         self.d_model = configs.model.d_model
 
         self.flatten = nn.Flatten(start_dim=-2)
@@ -211,7 +230,9 @@ class Anomaly_Detection_Model(nn.Module):
         self.decomposition = decomposition
         self.component = component
         self.strategy = strategy
-        
+
+        # if self.decomposition:
+        #     self.decomp_module = series_decomp(self.configs.model.kernel_size)
         self.encoder = encoder
         self.encoder.pos_emb_mul = None
         self.encoder.pos_emb_uni = None
@@ -223,7 +244,9 @@ class Anomaly_Detection_Model(nn.Module):
 
         self.recons_head = Anomaly_Detection_Head(self.configs, dropout)
 
-    def forward(self, x:Tensor, x_decomp:Tensor, return_att=False):
+    def forward(self, x:Tensor, x_decomp:Tensor,
+                sparse_attn_mask:Tensor=None, sparse_attn_mem_mask:Tensor=None,
+                return_att=False):
         # Decomposition
         """
         x :             [Batch, Input length, Channel]
@@ -232,6 +255,10 @@ class Anomaly_Detection_Model(nn.Module):
         """
         N = x.shape[-1]
         self.configs.data.bsz_efficient = x.shape[0]
+        # if self.decomposition:
+        #     res_init, trend_init = self.decomp_module(x)
+        #     if self.component=='trend': x_decomp = trend_init
+        #     else: x_decomp = res_init
         # Patching
         """
         inp_k :         [Batch, Channel, patch_num, patch_len]
@@ -258,8 +285,10 @@ class Anomaly_Detection_Model(nn.Module):
         if inp_decomp is not None:
             inp_decomp = inp_decomp.permute(0, 2, 1, 3)
 
-        _, output_h, _, _, _, _, _ = \
-            self.encoder(inp_k, inp_decomp, pretrain=False, strategy=self.strategy)
+        _, output_h, _, _, _, attn_prob_lst, attn_score_lst = \
+            self.encoder(inp_k, inp_decomp, 
+                         sparse_attn_mask=sparse_attn_mask, sparse_attn_mem_mask=sparse_attn_mem_mask,
+                         pretrain=False, strategy=self.strategy)
         # Reconstructor
         output_h = einops.rearrange(output_h, 'b p n d -> b n d p', n=N)
         dec_out = self.recons_head(output_h) # [bsz, n_vars, pred_len]
@@ -269,6 +298,10 @@ class Anomaly_Detection_Model(nn.Module):
         dec_out = self.encoder.revin(dec_out, 'denorm')
         # dec_out = dec_out.permute(0, 2, 1)
 
-        return dec_out
+        if return_att:
+            return dec_out, attn_prob_lst, attn_score_lst
+        else:
+            return dec_out
+    
 
 
