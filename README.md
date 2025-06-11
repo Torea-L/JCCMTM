@@ -14,7 +14,7 @@ The experimental procedure consists of three key steps:
 
 [1] Example Bash Command for Pre-training Data Preparation:​
 
-'''
+'''bash
 # make pretrain data
 python -u ./data_provider/make_data_pretrain.py \
     --cfg 'ETTm_pretrain_crossdomain.yaml' \
