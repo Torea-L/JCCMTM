@@ -9,3 +9,21 @@ The experimental procedure consists of three key steps:
 ​[2] Pre-training Phase;
 
 ​[3] Sub-task Fine-tuning.
+
+======================================================
+
+[1] Example Bash Command for Pre-training Data Preparation:​
+
+'''
+# make pretrain data
+python -u ./data_provider/make_data_pretrain.py \
+    --cfg 'ETTm_pretrain_crossdomain.yaml' \
+    --dset 'ETTm2' \
+    --stage 'pretrain' \
+    --task 'LTSF' \
+    --decomposition \
+    --kernel_size $kernel_size \
+    --category 'train' \
+    --seq_len 336 \
+    --root_path $root_path
+'''
