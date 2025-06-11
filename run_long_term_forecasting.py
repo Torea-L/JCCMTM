@@ -25,11 +25,13 @@ parser.add_argument('--task', type=str, default='LTSF', help="sub-tasks, options
 # model config file
 parser.add_argument('--cfg', type=str, required=True, default='ETTm_finetune.yaml', help='exp configure file')
 
-# Dataset and dataloader
+# dataset and dataloader
 parser.add_argument('--dset', type=str, required=True, default='ETTm1', help='dataset name')
 parser.add_argument('--data', type=str, required=True, default='custom', help='data name used in data_factory')
-parser.add_argument('--root_path', type=str, default='/home/JCCMTM/', help='root path of data files')
+parser.add_argument('--root_path', type=str, default='/home/JCCMTM-submit/', help='root path of data files')
 parser.add_argument('--data_path', type=str, default='Datas/ETT-small/ETTm1.csv', help='data file')
+parser.add_argument('--datasets', type=str, default='datasets', help='file path of the dataset')
+
 parser.add_argument('--features', type=str, default='M', help="forecasting task, options:['M', 'S', 'MS']; \
                     M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate")
 parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
@@ -63,7 +65,7 @@ parser.add_argument('--random_ratio', type=float, default=0., help='Random ratio
 # model define
 parser.add_argument('--enc_in', type=int, default=-1, help='encoder input size')
 parser.add_argument('--dec_in', type=int, default=-1, help='decoder input size')
-parser.add_argument('--c_out', type=int, default=7, help='output size')
+# parser.add_argument('--c_out', type=int, default=7, help='output size')
 
 parser.add_argument('--d_model', type=int, default=-1, help='dimension of model')
 parser.add_argument('--n_heads', type=int, default=-1, help='num of heads')
@@ -119,7 +121,7 @@ parser.add_argument('--use_amp', action='store_true', help='use automatic mixed 
 parser.add_argument('--No_Pre', action='store_true', help="Do not load the pre-trained model")
 parser.add_argument('--pretrain_model_id', type=str, required=True, default='None', 
                     help="ID of pre-trained model parameters file")
-parser.add_argument('--checkpoints', type=str, default='./checkpoints/',
+parser.add_argument('--checkpoints', type=str, default='checkpoints/',
                     help="Saving and loading paths for model parameters")
 parser.add_argument('--temp_save', action='store_true', help="Save temporary model parameters")
 parser.add_argument('--temp_epochs', type=int, default=50, help="Save temporary model parameters every `temp_epochs` epochs")
@@ -133,6 +135,16 @@ parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
 parser.add_argument('--gpu', type=int, default=0, help='gpu')
 parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
 parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
+
+# test settings
+parser.add_argument('--model_path', type=str, default=None, help='used for manually specifying models, \
+                    such as few-shot/zero-shot scenarios')
+parser.add_argument('--pre_model_path', type=str, default=None, help='used for manually specifying models, \
+                    such as few-shot/zero-shot scenarios')
+parser.add_argument('--return_attn', action='store_true', help='return attention weights')
+
+# cross-domain
+parser.add_argument('--cross_domain', action='store_true', help='cross-domain')
 
 args = parser.parse_args()
 
@@ -163,15 +175,15 @@ if __name__ == '__main__':
         configs.data.stride, configs.data.pre_stride_subseq,
         configs.data.mask_ratio,
         configs.data.patch_num, configs.data.num_predict,
-        configs.data.pre_batch_size)
+        configs.data.batch_num_use_mem)
     
-    setting = '{}_{}_ft{}_{}_dm{}_nh{}_el{}_dl{}_df{}'.format(
+    setting = '{}_{}_ft{}{}_dm{}_nh{}_el{}_dl{}_df{}'.format(
         args.model, args.dset, args.features,
         conj,
         args.d_model, args.n_heads, 
         args.e_layers, args.d_layers, args.d_ff)
     
-    setting_pred = '{}_{}_ft{}_dm{}_nh{}_el{}_dl{}_df{}'.format(
+    setting_pred = '{}_{}_ft{}dm{}_nh{}_el{}_dl{}_df{}'.format(
         args.model, args.dset, args.features,
         args.d_model, args.n_heads, 
         args.e_layers, args.d_layers, args.d_ff)
@@ -198,5 +210,6 @@ if __name__ == '__main__':
     elif args.category=='test':
         exp = Exp(args, configs, setting, time_start)  # set experiments
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-        exp.test(test=True, setting_pred=setting_pred, return_attn=True, save_result=True)
+        print('{} -> {}'.format(configs.data.context_points, configs.data.target_points))
+        exp.test(test=True, model_path=args.model_path, setting_pred=setting_pred, return_attn=args.return_attn, save_result=True)
         torch.cuda.empty_cache()
