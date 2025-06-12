@@ -178,8 +178,12 @@ def create_data_mask(tokens_data: np.ndarray,
             is_masked = None
 
             if mask_sample == 'all':
+                if nvars==1:
+                    mask_alpha = np.random.randint(low=int(0.25*seq_len)+1, high=int(0.75*seq_len))
+                else:
+                    mask_alpha = nvars-1
                 is_masked = _sample_mask_all_(seg_len=seq_len, 
-                                               mask_alpha=nvars-1, mask_beta=1, start_=int(0.25*seq_len), 
+                                               mask_alpha=mask_alpha, mask_beta=1, start_=int(0.25*seq_len), 
                                                kpi_num=nvars, 
                                                reverse=False, goal_num_predict=num_predict)
             else:
