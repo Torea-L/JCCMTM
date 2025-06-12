@@ -107,7 +107,8 @@ def _sample_mask_all_(seg_len:int,
     ngrams = np.arange(kpi_num, dtype=np.int64)
     pvals = np.array([1./kpi_num]*kpi_num)
     pvals[0] += 0.06
-    pvals[1] += 0.06
+    if kpi_num >1:
+       pvals[1] += 0.06
     pvals /= pvals.sum(keepdims=True)
     
     num_predict = 0
