@@ -114,3 +114,18 @@ Key Parameter Specifications:​​
 
 
 --​**cross_domain**​ (bool):  Must be set to True for cross-domain scenarios
+
+
+
+## Citation
+If you find this repo helpful, please cite our paper.
+
+```markdown
+@article{li2025jccmtm,
+  title={JCCMTM: Joint Channel-independent and Channel-dependent Strategy for Masked Multivariate Time-Series Modeling},
+  author={Li, Qi and Zhang, Zhenyu and Zhang, Yong and Zhang, Zhao and Zhu, Lin and Hua, Xiaolei and Yu, Renkai and Fan, Xinwen and Lei, Zhe and Feng, Junlan},
+  journal={Neural Networks},
+  pages={107922},
+  year={2025},
+  publisher={Elsevier}
+}
