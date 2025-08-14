@@ -1,5 +1,5 @@
-# JCCMTM
-# Official implementation of **JCCMTM: Joint Channel-independent and Channel-dependent Strategy for Masked Multivariate Time-Series Modeling**
+# JCCMTM: Joint Channel-independent and Channel-dependent Strategy for Masked Multivariate Time-Series Modeling
+Official implementation of [**JCCMTM: Joint Channel-independent and Channel-dependent Strategy for Masked Multivariate Time-Series Modeling**](https://www.sciencedirect.com/science/article/abs/pii/S0893608025008032)
 
 
 The experimental procedure consists of three key steps:
